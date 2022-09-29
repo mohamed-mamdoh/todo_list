@@ -1,0 +1,247 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import 'package:intl/intl.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:todo_list/modules/archived_tasks/archeved_tasks_screen.dart';
+import 'package:todo_list/modules/done_tasks/done_tasks_screen.dart';
+
+import '../modules/new_tasks/new_tasks_screen.dart';
+import '../shared/components/components.dart';
+
+class HomeLayout extends StatefulWidget {
+  const HomeLayout({Key? key}) : super(key: key);
+
+  @override
+  State<HomeLayout> createState() => _HomeLayoutState();
+}
+
+class _HomeLayoutState extends State<HomeLayout> {
+  int currentIndex = 0;
+  late Database dataBase;
+  var scaffoldKey = GlobalKey<ScaffoldState>();
+  var formKey = GlobalKey<FormState>();
+  bool isBottomSheetShown = false;
+  IconData fabIcon = Icons.edit;
+  var titleController = TextEditingController();
+  var timeController = TextEditingController();
+  var dateController = TextEditingController();
+  List<Widget> screens = [
+    newTasksScreen(),
+    doneTasksScreen(),
+    archevedTasksScreen(),
+  ];
+  List<String> titles = [
+    'New Tasks',
+    'Done Tasks',
+    'Archived Tasks',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    createDataBase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: scaffoldKey,
+      appBar: AppBar(
+        title: Text(
+          titles[currentIndex],
+        ),
+      ),
+      body: screens[currentIndex],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          if (isBottomSheetShown) {
+            if (formKey.currentState!.validate()) {
+
+
+              insertToDataBase(
+                title: titleController.text,
+                date: dateController.text,
+                time: timeController.text,
+              ).then((value) {
+                Navigator.pop(context);
+                isBottomSheetShown = false;
+                setState(() {
+                  fabIcon = Icons.edit;
+                });
+              });
+            }
+          } else {
+            scaffoldKey.currentState!.showBottomSheet(
+              (context) => Container(
+                color: Colors.grey[100],
+                padding: const EdgeInsets.all(20.0),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      defaultFormField(
+                        controller: titleController,
+                        type: TextInputType.text,
+                        validate: (String value) {
+                          if (value.isEmpty) {
+                            return 'Title Must Be Not Empty';
+                          }
+                        },
+                        label: 'Task Title',
+                        prefix: Icons.title,
+                      ),
+                      const SizedBox(
+                        height: 15.0,
+                      ),
+                      defaultFormField(
+                        controller: timeController,
+                        type: TextInputType.datetime,
+                        onTap: () {
+                          showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                          ).then((value) {
+                            timeController.text =
+                                value!.format(context).toString();
+
+                            if (kDebugMode) {
+                              print(value.format(context));
+                            }
+                          });
+                        },
+                        validate: (String value) {
+                          if (value.isEmpty) {
+                            return 'Time Must Be Not Empty';
+                          }
+                        },
+                        label: 'Task Time',
+                        prefix: Icons.watch_later_outlined,
+                      ),
+                      const SizedBox(
+                        height: 15.0,
+                      ),
+                      defaultFormField(
+                        controller: dateController,
+                        type: TextInputType.datetime,
+                        onTap: () {
+                          showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.parse('2023-08-12'),
+                          ).then((value) {
+                            dateController.text =
+                                DateFormat.yMMMd().format(value!);
+                          });
+                        },
+                        validate: (String value) {
+                          if (value.isEmpty) {
+                            return 'Date Must Be Not Empty';
+                          }
+                        },
+                        label: 'Task Date',
+                        prefix: Icons.calendar_today,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+            isBottomSheetShown = true;
+            setState(() {
+              fabIcon = Icons.add;
+            });
+          }
+        },
+        child: Icon(
+          fabIcon,
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: currentIndex,
+        onTap: (index) {
+          setState(() {
+            currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.menu,
+            ),
+            label: 'Tasks',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.check_circle_outline,
+            ),
+            label: 'Done',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.archive_outlined,
+            ),
+            label: 'Archived',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String> getName() async {
+    return 'mohamed';
+  }
+
+  Future<void> createDataBase() async {
+    dataBase = await openDatabase(
+      'toDo.db',
+      version: 1,
+      onCreate: (database, version) {
+        if (kDebugMode) {
+          print('dataBase created');
+        }
+        database
+            .execute(
+                'CREATE TABLE tasks(id INTEGER PRIMARY KYE,title TEXT,date TEXT,time TEXT,status TEXT)')
+            .then((value) {
+          if (kDebugMode) {
+            print('table created');
+          }
+        }).catchError((error) {
+          if (kDebugMode) {
+            print('Error when Creating Table ${error.toString()} ');
+          }
+        });
+      },
+      onOpen: (database) {
+        if (kDebugMode) {
+          print('dataBase opened');
+        }
+      },
+    );
+  }
+
+  Future insertToDataBase(
+      {required String title,
+      required String time,
+      required String date}) async {
+    return await dataBase.transaction((txn) {
+      txn
+          .rawInsert(
+              'INSERT INTO tasks (title,date,time,status) VALUES($title,$date,$time,"new")')
+          .then((value) {
+        if (kDebugMode) {
+          print('$value Inserted Successfully');
+        }
+      }).catchError((error) {
+        if (kDebugMode) {
+          print('Error when Inserting New Record ${error.toString()} ');
+        }
+      });
+      return Future(() => null);
+    });
+  }
+}
